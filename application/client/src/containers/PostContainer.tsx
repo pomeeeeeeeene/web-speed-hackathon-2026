@@ -21,9 +21,14 @@ const PostContainerContent = ({ postId }: { postId: string | undefined }) => {
 
   if (isLoadingPost) {
     return (
-      <Helmet>
-        <title>読込中 - CaX</title>
-      </Helmet>
+      <>
+        <Helmet>
+          <title>読込中 - CaX</title>
+        </Helmet>
+        <section className="px-4 py-8">
+          <p className="text-cax-text-muted text-center">投稿を読み込み中です...</p>
+        </section>
+      </>
     );
   }
 

@@ -53,16 +53,19 @@ export const AppContainer = () => {
   }, [pathname]);
 
   const [activeUser, setActiveUser] = useState<Models.User | null>(null);
-  const [isLoadingActiveUser, setIsLoadingActiveUser] = useState(true);
+  const [hasResolvedActiveUser, setHasResolvedActiveUser] = useState(false);
   useEffect(() => {
     void fetchJSON<Models.User>("/api/v1/me")
       .then((user) => {
         setActiveUser(user);
       })
+      .catch(() => {
+        setActiveUser(null);
+      })
       .finally(() => {
-        setIsLoadingActiveUser(false);
+        setHasResolvedActiveUser(true);
       });
-  }, [setActiveUser, setIsLoadingActiveUser]);
+  }, [setActiveUser, setHasResolvedActiveUser]);
   const handleLogout = useCallback(async () => {
     await sendJSON("/api/v1/signout", {});
     setActiveUser(null);
@@ -71,16 +74,7 @@ export const AppContainer = () => {
 
   const authModalId = useId();
   const newPostModalId = useId();
-
-  if (isLoadingActiveUser) {
-    return (
-      <HelmetProvider>
-        <Helmet>
-          <title>読込中 - CaX</title>
-        </Helmet>
-      </HelmetProvider>
-    );
-  }
+  const isResolvingActiveUser = !hasResolvedActiveUser;
 
   return (
     <HelmetProvider>
@@ -106,12 +100,22 @@ export const AppContainer = () => {
             <Route element={<TimelineContainer />} path="/" />
             <Route
               element={
-                <DirectMessageListContainer activeUser={activeUser} authModalId={authModalId} />
+                <DirectMessageListContainer
+                  activeUser={activeUser}
+                  authModalId={authModalId}
+                  isResolvingActiveUser={isResolvingActiveUser}
+                />
               }
               path="/dm"
             />
             <Route
-              element={<DirectMessageContainer activeUser={activeUser} authModalId={authModalId} />}
+              element={
+                <DirectMessageContainer
+                  activeUser={activeUser}
+                  authModalId={authModalId}
+                  isResolvingActiveUser={isResolvingActiveUser}
+                />
+              }
               path="/dm/:conversationId"
             />
             <Route element={<SearchContainer />} path="/search" />
@@ -119,7 +123,13 @@ export const AppContainer = () => {
             <Route element={<PostContainer />} path="/posts/:postId" />
             <Route element={<TermContainer />} path="/terms" />
             <Route
-              element={<CrokContainer activeUser={activeUser} authModalId={authModalId} />}
+              element={
+                <CrokContainer
+                  activeUser={activeUser}
+                  authModalId={authModalId}
+                  isResolvingActiveUser={isResolvingActiveUser}
+                />
+              }
               path="/crok"
             />
             <Route element={<NotFoundContainer />} path="*" />
