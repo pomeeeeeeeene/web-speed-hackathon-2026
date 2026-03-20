@@ -34,45 +34,48 @@ interface PromisifiedKuromojiBuilder extends KuromojiBuilder {
 }
 
 interface SuggestionDeps {
+  createSuggestionSearcher: (tokenizer: KuromojiTokenizer, candidates: string[]) => SuggestionSearcher;
   extractTokens: (tokens: KuromojiToken[]) => string[];
-  filterSuggestionsBM25: (
-    tokenizer: KuromojiTokenizer,
-    candidates: string[],
-    queryTokens: string[],
-  ) => string[];
   tokenizer: KuromojiTokenizer;
 }
 
+type SuggestionSearcher = (queryTokens: string[]) => string[];
+
 let suggestionDepsPromise: Promise<SuggestionDeps> | null = null;
 let suggestionCandidatesPromise: Promise<string[]> | null = null;
+let suggestionSearcherPromise: Promise<SuggestionSearcher> | null = null;
 
 const loadSuggestionDeps = () => {
   suggestionDepsPromise ??= (async () => {
-    const [bluebirdModule, kuromojiModule, bm25Module] = await Promise.all([
-      import("bluebird"),
-      import("kuromoji"),
-      import("@web-speed-hackathon-2026/client/src/utils/bm25_search"),
-    ]);
+    try {
+      const [bluebirdModule, kuromojiModule, bm25Module] = await Promise.all([
+        import("bluebird"),
+        import("kuromoji"),
+        import("@web-speed-hackathon-2026/client/src/utils/bm25_search"),
+      ]);
 
-    const Bluebird = (bluebirdModule.default ?? bluebirdModule) as {
-      promisifyAll: <T extends object>(target: T) => T;
-    };
-    const kuromoji = (kuromojiModule.default ?? kuromojiModule) as {
-      builder: (options: { dicPath: string }) => KuromojiBuilder;
-    };
-    const builder = Bluebird.promisifyAll(kuromoji.builder({ dicPath: "/dicts" })) as
-      PromisifiedKuromojiBuilder;
-    const tokenizer = await builder.buildAsync();
+      const Bluebird = (bluebirdModule.default ?? bluebirdModule) as {
+        promisifyAll: <T extends object>(target: T) => T;
+      };
+      const kuromoji = (kuromojiModule.default ?? kuromojiModule) as {
+        builder: (options: { dicPath: string }) => KuromojiBuilder;
+      };
+      const builder = Bluebird.promisifyAll(kuromoji.builder({ dicPath: "/dicts" })) as
+        PromisifiedKuromojiBuilder;
+      const tokenizer = await builder.buildAsync();
 
-    return {
-      extractTokens: bm25Module.extractTokens as (tokens: KuromojiToken[]) => string[],
-      filterSuggestionsBM25: bm25Module.filterSuggestionsBM25 as (
-        tokenizer: KuromojiTokenizer,
-        candidates: string[],
-        queryTokens: string[],
-      ) => string[],
-      tokenizer,
-    };
+      return {
+        createSuggestionSearcher: bm25Module.createSuggestionSearcher as (
+          tokenizer: KuromojiTokenizer,
+          candidates: string[],
+        ) => SuggestionSearcher,
+        extractTokens: bm25Module.extractTokens as (tokens: KuromojiToken[]) => string[],
+        tokenizer,
+      };
+    } catch (error) {
+      suggestionDepsPromise = null;
+      throw error;
+    }
   })();
 
   return suggestionDepsPromise;
@@ -87,6 +90,20 @@ const loadSuggestionCandidates = () => {
     });
 
   return suggestionCandidatesPromise;
+};
+
+const loadSuggestionSearcher = () => {
+  suggestionSearcherPromise ??= (async () => {
+    try {
+      const [candidates, deps] = await Promise.all([loadSuggestionCandidates(), loadSuggestionDeps()]);
+      return deps.createSuggestionSearcher(deps.tokenizer, candidates);
+    } catch (error) {
+      suggestionSearcherPromise = null;
+      throw error;
+    }
+  })();
+
+  return suggestionSearcherPromise;
 };
 
 // トークン単位でハイライト
@@ -171,13 +188,13 @@ export const ChatInput = ({ isStreaming, onSendMessage }: Props) => {
 
       try {
         setShowSuggestions(false);
-        const [candidates, deps] = await Promise.all([loadSuggestionCandidates(), loadSuggestionDeps()]);
+        const [deps, searchSuggestions] = await Promise.all([loadSuggestionDeps(), loadSuggestionSearcher()]);
         if (cancelled) {
           return;
         }
 
         const tokens = deps.extractTokens(deps.tokenizer.tokenize(inputValue));
-        const results = deps.filterSuggestionsBM25(deps.tokenizer, candidates, tokens);
+        const results = searchSuggestions(tokens);
 
         if (cancelled) {
           return;
