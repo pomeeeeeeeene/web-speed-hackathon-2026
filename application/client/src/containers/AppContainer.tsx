@@ -6,6 +6,7 @@ import { AppPage } from "@web-speed-hackathon-2026/client/src/components/applica
 import { AuthModalContainer } from "@web-speed-hackathon-2026/client/src/containers/AuthModalContainer";
 import { NewPostModalContainer } from "@web-speed-hackathon-2026/client/src/containers/NewPostModalContainer";
 import { NotFoundContainer } from "@web-speed-hackathon-2026/client/src/containers/NotFoundContainer";
+import { PostContainer } from "@web-speed-hackathon-2026/client/src/containers/PostContainer";
 import { TimelineContainer } from "@web-speed-hackathon-2026/client/src/containers/TimelineContainer";
 import { fetchJSON, sendJSON } from "@web-speed-hackathon-2026/client/src/utils/fetchers";
 
@@ -27,11 +28,6 @@ const DirectMessageListContainer = lazy(() =>
       default: module.DirectMessageListContainer,
     }),
   ),
-);
-const PostContainer = lazy(() =>
-  import("@web-speed-hackathon-2026/client/src/containers/PostContainer").then((module) => ({
-    default: module.PostContainer,
-  })),
 );
 const SearchContainer = lazy(() =>
   import("@web-speed-hackathon-2026/client/src/containers/SearchContainer").then((module) => ({
