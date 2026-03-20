@@ -1,15 +1,42 @@
-import { MagickFormat } from "@imagemagick/magick-wasm";
 import { ChangeEventHandler, FormEventHandler, useCallback, useState } from "react";
 
 import { FontAwesomeIcon } from "@web-speed-hackathon-2026/client/src/components/foundation/FontAwesomeIcon";
 import { ModalErrorMessage } from "@web-speed-hackathon-2026/client/src/components/modal/ModalErrorMessage";
 import { ModalSubmitButton } from "@web-speed-hackathon-2026/client/src/components/modal/ModalSubmitButton";
 import { AttachFileInputButton } from "@web-speed-hackathon-2026/client/src/components/new_post_modal/AttachFileInputButton";
-import { convertImage } from "@web-speed-hackathon-2026/client/src/utils/convert_image";
-import { convertMovie } from "@web-speed-hackathon-2026/client/src/utils/convert_movie";
-import { convertSound } from "@web-speed-hackathon-2026/client/src/utils/convert_sound";
 
 const MAX_UPLOAD_BYTES_LIMIT = 10 * 1024 * 1024;
+
+let magickModulePromise: Promise<typeof import("@imagemagick/magick-wasm")> | null = null;
+let convertImageModulePromise: Promise<
+  typeof import("@web-speed-hackathon-2026/client/src/utils/convert_image")
+> | null = null;
+let convertMovieModulePromise: Promise<
+  typeof import("@web-speed-hackathon-2026/client/src/utils/convert_movie")
+> | null = null;
+let convertSoundModulePromise: Promise<
+  typeof import("@web-speed-hackathon-2026/client/src/utils/convert_sound")
+> | null = null;
+
+const loadMagickModule = () => {
+  magickModulePromise ??= import("@imagemagick/magick-wasm");
+  return magickModulePromise;
+};
+
+const loadConvertImageModule = () => {
+  convertImageModulePromise ??= import("@web-speed-hackathon-2026/client/src/utils/convert_image");
+  return convertImageModulePromise;
+};
+
+const loadConvertMovieModule = () => {
+  convertMovieModulePromise ??= import("@web-speed-hackathon-2026/client/src/utils/convert_movie");
+  return convertMovieModulePromise;
+};
+
+const loadConvertSoundModule = () => {
+  convertSoundModulePromise ??= import("@web-speed-hackathon-2026/client/src/utils/convert_sound");
+  return convertSoundModulePromise;
+};
 
 interface SubmitParams {
   images: File[];
@@ -53,24 +80,32 @@ export const NewPostModalPage = ({ id, hasError, isLoading, onResetError, onSubm
     if (isValid) {
       setIsConverting(true);
 
-      Promise.all(
-        files.map((file) =>
-          convertImage(file, { extension: MagickFormat.Jpg }).then(
-            (blob) => new File([blob], "converted.jpg", { type: "image/jpeg" }),
-          ),
-        ),
-      )
-        .then((convertedFiles) => {
+      void (async () => {
+        try {
+          const [{ convertImage }, { MagickFormat }] = await Promise.all([
+            loadConvertImageModule(),
+            loadMagickModule(),
+          ]);
+          const convertedFiles = await Promise.all(
+            files.map((file) =>
+              convertImage(file, { extension: MagickFormat.Jpg }).then(
+                (blob) => new File([blob], "converted.jpg", { type: "image/jpeg" }),
+              ),
+            ),
+          );
+
           setParams((params) => ({
             ...params,
             images: convertedFiles,
             movie: undefined,
             sound: undefined,
           }));
-
+        } catch (error) {
+          console.error(error);
+        } finally {
           setIsConverting(false);
-        })
-        .catch(console.error);
+        }
+      })();
     }
   }, []);
 
@@ -82,16 +117,22 @@ export const NewPostModalPage = ({ id, hasError, isLoading, onResetError, onSubm
     if (isValid) {
       setIsConverting(true);
 
-      convertSound(file, { extension: "mp3" }).then((converted) => {
-        setParams((params) => ({
-          ...params,
-          images: [],
-          movie: undefined,
-          sound: new File([converted], "converted.mp3", { type: "audio/mpeg" }),
-        }));
-
-        setIsConverting(false);
-      });
+      void (async () => {
+        try {
+          const { convertSound } = await loadConvertSoundModule();
+          const converted = await convertSound(file, { extension: "mp3" });
+          setParams((params) => ({
+            ...params,
+            images: [],
+            movie: undefined,
+            sound: new File([converted], "converted.mp3", { type: "audio/mpeg" }),
+          }));
+        } catch (error) {
+          console.error(error);
+        } finally {
+          setIsConverting(false);
+        }
+      })();
     }
   }, []);
 
@@ -103,8 +144,10 @@ export const NewPostModalPage = ({ id, hasError, isLoading, onResetError, onSubm
     if (isValid) {
       setIsConverting(true);
 
-      convertMovie(file, { extension: "gif", size: undefined })
-        .then((converted) => {
+      void (async () => {
+        try {
+          const { convertMovie } = await loadConvertMovieModule();
+          const converted = await convertMovie(file, { extension: "gif", size: undefined });
           setParams((params) => ({
             ...params,
             images: [],
@@ -113,10 +156,12 @@ export const NewPostModalPage = ({ id, hasError, isLoading, onResetError, onSubm
             }),
             sound: undefined,
           }));
-
+        } catch (error) {
+          console.error(error);
+        } finally {
           setIsConverting(false);
-        })
-        .catch(console.error);
+        }
+      })();
     }
   }, []);
 
