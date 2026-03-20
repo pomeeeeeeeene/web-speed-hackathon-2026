@@ -96,7 +96,14 @@ export const AppContainer = () => {
       >
         <Suspense
           fallback={
-            <div className="text-cax-text-muted flex items-center justify-center py-8">読込中...</div>
+            <>
+              <Helmet>
+                <title>読込中 - CaX</title>
+              </Helmet>
+              <div className="text-cax-text-muted flex items-center justify-center py-8">
+                読込中...
+              </div>
+            </>
           }
         >
           <Routes>
