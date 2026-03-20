@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Field, InjectedFormProps, reduxForm, WrappedFieldProps } from "redux-form";
+import {
+  Field,
+  InjectedFormProps,
+  reduxForm,
+  SubmissionError,
+  WrappedFieldProps,
+} from "redux-form";
 
 import { Timeline } from "@web-speed-hackathon-2026/client/src/components/timeline/Timeline";
 import {
@@ -17,23 +23,25 @@ interface Props {
   results: Models.Post[];
 }
 
-const SearchInput = ({ input, meta }: WrappedFieldProps) => (
-  <div className="flex flex-1 flex-col">
-    <input
-      {...input}
-      className={`flex-1 rounded border px-4 py-2 focus:outline-none ${
-        meta.touched && meta.error
-          ? "border-cax-danger focus:border-cax-danger"
-          : "border-cax-border focus:border-cax-brand-strong"
-      }`}
-      placeholder="検索 (例: キーワード since:2025-01-01 until:2025-12-31)"
-      type="text"
-    />
-    {meta.touched && meta.error && (
-      <span className="text-cax-danger mt-1 text-xs">{meta.error}</span>
-    )}
-  </div>
-);
+const SearchInput = ({ input, meta }: WrappedFieldProps) => {
+  const hasError = Boolean(meta.error && (meta.touched || meta.submitFailed));
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <input
+        {...input}
+        className={`flex-1 rounded border px-4 py-2 focus:outline-none ${
+          hasError
+            ? "border-cax-danger focus:border-cax-danger"
+            : "border-cax-border focus:border-cax-brand-strong"
+        }`}
+        placeholder="検索 (例: キーワード since:2025-01-01 until:2025-12-31)"
+        type="text"
+      />
+      {hasError && <span className="text-cax-danger mt-1 text-xs">{meta.error}</span>}
+    </div>
+  );
+};
 
 const SearchPageComponent = ({
   query,
@@ -91,6 +99,11 @@ const SearchPageComponent = ({
 
   const onSubmit = (values: SearchFormData) => {
     const sanitizedText = sanitizeSearchText(values.searchText.trim());
+    if (!sanitizedText) {
+      throw new SubmissionError({
+        searchText: "検索キーワードを入力してください",
+      });
+    }
     navigate(`/search?q=${encodeURIComponent(sanitizedText)}`);
   };
 
