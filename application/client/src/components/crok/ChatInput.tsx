@@ -1,5 +1,3 @@
-import Bluebird from "bluebird";
-import kuromoji, { type Tokenizer, type IpadicFeatures } from "kuromoji";
 import {
   useEffect,
   useLayoutEffect,
@@ -11,16 +9,73 @@ import {
 } from "react";
 
 import { FontAwesomeIcon } from "@web-speed-hackathon-2026/client/src/components/foundation/FontAwesomeIcon";
-import {
-  extractTokens,
-  filterSuggestionsBM25,
-} from "@web-speed-hackathon-2026/client/src/utils/bm25_search";
 import { fetchJSON } from "@web-speed-hackathon-2026/client/src/utils/fetchers";
 
 interface Props {
   isStreaming: boolean;
   onSendMessage: (message: string) => void;
 }
+
+interface KuromojiToken {
+  pos: string;
+  surface_form: string;
+}
+
+interface KuromojiTokenizer {
+  tokenize: (text: string) => KuromojiToken[];
+}
+
+interface KuromojiBuilder {
+  build: (callback: (error: unknown, tokenizer: KuromojiTokenizer) => void) => void;
+}
+
+interface PromisifiedKuromojiBuilder extends KuromojiBuilder {
+  buildAsync: () => Promise<KuromojiTokenizer>;
+}
+
+interface SuggestionDeps {
+  extractTokens: (tokens: KuromojiToken[]) => string[];
+  filterSuggestionsBM25: (
+    tokenizer: KuromojiTokenizer,
+    candidates: string[],
+    queryTokens: string[],
+  ) => string[];
+  tokenizer: KuromojiTokenizer;
+}
+
+let suggestionDepsPromise: Promise<SuggestionDeps> | null = null;
+
+const loadSuggestionDeps = () => {
+  suggestionDepsPromise ??= (async () => {
+    const [bluebirdModule, kuromojiModule, bm25Module] = await Promise.all([
+      import("bluebird"),
+      import("kuromoji"),
+      import("@web-speed-hackathon-2026/client/src/utils/bm25_search"),
+    ]);
+
+    const Bluebird = (bluebirdModule.default ?? bluebirdModule) as {
+      promisifyAll: <T extends object>(target: T) => T;
+    };
+    const kuromoji = (kuromojiModule.default ?? kuromojiModule) as {
+      builder: (options: { dicPath: string }) => KuromojiBuilder;
+    };
+    const builder = Bluebird.promisifyAll(kuromoji.builder({ dicPath: "/dicts" })) as
+      PromisifiedKuromojiBuilder;
+    const tokenizer = await builder.buildAsync();
+
+    return {
+      extractTokens: bm25Module.extractTokens as (tokens: KuromojiToken[]) => string[],
+      filterSuggestionsBM25: bm25Module.filterSuggestionsBM25 as (
+        tokenizer: KuromojiTokenizer,
+        candidates: string[],
+        queryTokens: string[],
+      ) => string[],
+      tokenizer,
+    };
+  })();
+
+  return suggestionDepsPromise;
+};
 
 // トークン単位でハイライト
 function highlightMatchByTokens(text: string, queryTokens: string[]): React.ReactNode {
@@ -79,7 +134,6 @@ function highlightMatchByTokens(text: string, queryTokens: string[]): React.Reac
 export const ChatInput = ({ isStreaming, onSendMessage }: Props) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
-  const [tokenizer, setTokenizer] = useState<Tokenizer<IpadicFeatures> | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [queryTokens, setQueryTokens] = useState<string[]>([]);
@@ -92,44 +146,28 @@ export const ChatInput = ({ isStreaming, onSendMessage }: Props) => {
     }
   }, [suggestions, showSuggestions]);
 
-  // 初回にkuromojiトークナイザーを構築
-  useEffect(() => {
-    let mounted = true;
-
-    const init = async () => {
-      const builder = Bluebird.promisifyAll(kuromoji.builder({ dicPath: "/dicts" }));
-      const nextTokenizer = await builder.buildAsync();
-      if (mounted) {
-        setTokenizer(nextTokenizer);
-      }
-    };
-    init();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
   useEffect(() => {
     let cancelled = false;
 
     const updateSuggestions = async () => {
-      if (!tokenizer || !inputValue.trim()) {
+      if (!inputValue.trim()) {
         setSuggestions([]);
         setQueryTokens([]);
         setShowSuggestions(false);
         return;
       }
 
-      const { suggestions: candidates } = await fetchJSON<{ suggestions: string[] }>(
-        "/api/v1/crok/suggestions",
-      );
+      setShowSuggestions(false);
+      const [{ suggestions: candidates }, deps] = await Promise.all([
+        fetchJSON<{ suggestions: string[] }>("/api/v1/crok/suggestions"),
+        loadSuggestionDeps(),
+      ]);
       if (cancelled) {
         return;
       }
 
-      const tokens = extractTokens(tokenizer.tokenize(inputValue));
-      const results = filterSuggestionsBM25(tokenizer, candidates, tokens);
+      const tokens = deps.extractTokens(deps.tokenizer.tokenize(inputValue));
+      const results = deps.filterSuggestionsBM25(deps.tokenizer, candidates, tokens);
 
       if (cancelled) {
         return;
@@ -145,7 +183,7 @@ export const ChatInput = ({ isStreaming, onSendMessage }: Props) => {
     return () => {
       cancelled = true;
     };
-  }, [inputValue, tokenizer]);
+  }, [inputValue]);
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
