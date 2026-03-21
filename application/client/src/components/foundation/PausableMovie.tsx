@@ -17,7 +17,6 @@ interface Props {
 export const PausableMovie = ({ src }: Props) => {
   const animatorRef = useRef<Animator>(null);
   const [binary, setBinary] = useState<ArrayBuffer | null>(null);
-  const [isActivated, setIsActivated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -29,7 +28,15 @@ export const PausableMovie = ({ src }: Props) => {
   }, []);
 
   useEffect(() => {
-    if (!isActivated || binary !== null || isLoading || hasError) {
+    animatorRef.current?.stop();
+    setBinary(null);
+    setIsLoading(false);
+    setHasError(false);
+    setIsPlaying(false);
+  }, [src]);
+
+  useEffect(() => {
+    if (binary !== null || isLoading || hasError) {
       return;
     }
 
@@ -46,7 +53,7 @@ export const PausableMovie = ({ src }: Props) => {
         setIsLoading(false);
       },
     );
-  }, [binary, hasError, isActivated, isLoading, src]);
+  }, [binary, hasError, isLoading, src]);
 
   const canvasCallbackRef = useCallback<RefCallback<HTMLCanvasElement>>(
     (el) => {
@@ -79,13 +86,8 @@ export const PausableMovie = ({ src }: Props) => {
   );
 
   const handleClick = useCallback(() => {
-    if (!isActivated) {
-      setIsActivated(true);
-      return;
-    }
-
     if (binary === null) {
-      if (hasError) {
+      if (hasError && !isLoading) {
         setHasError(false);
       }
       return;
@@ -99,7 +101,7 @@ export const PausableMovie = ({ src }: Props) => {
       }
       return !current;
     });
-  }, [binary, hasError, isActivated]);
+  }, [binary, hasError, isLoading]);
 
   return (
     <AspectRatioBox aspectHeight={1} aspectWidth={1}>
@@ -142,7 +144,7 @@ export const PausableMovie = ({ src }: Props) => {
 
         {binary === null ? (
           <p className="text-cax-surface-raised absolute right-2 bottom-2 rounded bg-cax-overlay/60 px-2 py-1 text-xs">
-            {hasError ? "再試行する" : isLoading ? "動画を準備中..." : "タップして再生"}
+            {hasError ? "再試行する" : "動画を準備中..."}
           </p>
         ) : null}
       </button>

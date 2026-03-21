@@ -1,6 +1,8 @@
-import { ReactEventHandler, useCallback, useRef, useState } from "react";
+import { ReactEventHandler, useCallback, useEffect, useRef, useState } from "react";
 
 import { FontAwesomeIcon } from "@web-speed-hackathon-2026/client/src/components/foundation/FontAwesomeIcon";
+import { SoundWaveSVG } from "@web-speed-hackathon-2026/client/src/components/foundation/SoundWaveSVG";
+import { fetchBinary } from "@web-speed-hackathon-2026/client/src/utils/fetchers";
 import { getSoundPath } from "@web-speed-hackathon-2026/client/src/utils/get_path";
 
 interface Props {
@@ -8,10 +10,37 @@ interface Props {
 }
 
 export const SoundPlayer = ({ sound }: Props) => {
+  const soundPath = getSoundPath(sound.id);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [currentTimeRatio, setCurrentTimeRatio] = useState(0);
+  const [soundData, setSoundData] = useState<ArrayBuffer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [hasWaveError, setHasWaveError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    setSoundData(null);
+    setHasWaveError(false);
+
+    void fetchBinary(soundPath).then(
+      (binary) => {
+        if (active) {
+          setSoundData(binary);
+        }
+      },
+      () => {
+        if (active) {
+          setHasWaveError(true);
+        }
+      },
+    );
+
+    return () => {
+      active = false;
+    };
+  }, [soundPath]);
 
   const handleLoadedMetadata = useCallback<ReactEventHandler<HTMLAudioElement>>(() => {
     setIsReady(true);
@@ -52,7 +81,7 @@ export const SoundPlayer = ({ sound }: Props) => {
     <div className="bg-cax-surface-subtle flex h-full w-full items-center justify-center">
       <audio
         ref={audioRef}
-        src={getSoundPath(sound.id)}
+        src={soundPath}
         preload="none"
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
@@ -76,14 +105,21 @@ export const SoundPlayer = ({ sound }: Props) => {
           {sound.artist}
         </p>
         <div className="pt-2">
-          <div className="bg-cax-border/60 h-1 w-full overflow-hidden rounded-full">
-            <div
-              className="bg-cax-accent h-full rounded-full transition-[width]"
-              style={{ width: `${currentTimeRatio * 100}%` }}
-            />
+          <div className="bg-cax-border/60 h-8 w-full overflow-hidden rounded">
+            {soundData !== null ? (
+              <SoundWaveSVG soundData={soundData} />
+            ) : (
+              <div
+                className="bg-cax-accent/20 h-full transition-[width]"
+                style={{ width: `${Math.max(currentTimeRatio * 100, 15)}%` }}
+              />
+            )}
           </div>
           {!isReady ? (
             <p className="text-cax-text-muted pt-1 text-xs">再生時に音声を読み込みます</p>
+          ) : null}
+          {hasWaveError ? (
+            <p className="text-cax-text-muted pt-1 text-xs">波形を読み込めませんでした</p>
           ) : null}
         </div>
       </div>

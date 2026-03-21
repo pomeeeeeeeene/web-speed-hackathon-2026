@@ -38,6 +38,12 @@ const loadConvertSoundModule = () => {
   return convertSoundModulePromise;
 };
 
+const isJpegFile = (file: File): boolean => {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  return type === "image/jpeg" || type === "image/jpg" || name.endsWith(".jpg") || name.endsWith(".jpeg");
+};
+
 interface SubmitParams {
   images: File[];
   movie: File | undefined;
@@ -78,6 +84,16 @@ export const NewPostModalPage = ({ id, hasError, isLoading, onResetError, onSubm
 
     setHasFileError(isValid !== true);
     if (isValid) {
+      if (files.every(isJpegFile)) {
+        setParams((params) => ({
+          ...params,
+          images: files,
+          movie: undefined,
+          sound: undefined,
+        }));
+        return;
+      }
+
       setIsConverting(true);
 
       void (async () => {
@@ -88,9 +104,11 @@ export const NewPostModalPage = ({ id, hasError, isLoading, onResetError, onSubm
           ]);
           const convertedFiles = await Promise.all(
             files.map((file) =>
-              convertImage(file, { extension: MagickFormat.Jpg }).then(
-                (blob) => new File([blob], "converted.jpg", { type: "image/jpeg" }),
-              ),
+              isJpegFile(file)
+                ? file
+                : convertImage(file, { extension: MagickFormat.Jpg }).then(
+                    (blob) => new File([blob], "converted.jpg", { type: "image/jpeg" }),
+                  ),
             ),
           );
 
