@@ -1,4 +1,7 @@
-import { loadFFmpeg } from "@web-speed-hackathon-2026/client/src/utils/load_ffmpeg";
+import {
+  createFFmpegTempFileName,
+  loadFFmpeg,
+} from "@web-speed-hackathon-2026/client/src/utils/load_ffmpeg";
 
 interface Options {
   extension: string;
@@ -17,25 +20,33 @@ export async function convertMovie(file: File, options: Options): Promise<Blob> 
   ]
     .filter(Boolean)
     .join(",");
-  const exportFile = `export.${options.extension}`;
+  const inputFile = createFFmpegTempFileName("movie-input");
+  const exportFile = createFFmpegTempFileName("movie-output", options.extension);
 
-  await ffmpeg.writeFile("file", new Uint8Array(await file.arrayBuffer()));
+  await ffmpeg.writeFile(inputFile, new Uint8Array(await file.arrayBuffer()));
 
-  await ffmpeg.exec([
-    "-i",
-    "file",
-    "-t",
-    "5",
-    "-r",
-    "10",
-    "-vf",
-    `crop=${cropOptions}`,
-    "-an",
-    exportFile,
-  ]);
+  try {
+    await ffmpeg.exec([
+      "-i",
+      inputFile,
+      "-t",
+      "5",
+      "-r",
+      "10",
+      "-vf",
+      `crop=${cropOptions}`,
+      "-an",
+      exportFile,
+    ]);
 
-  const output = (await ffmpeg.readFile(exportFile)) as Uint8Array<ArrayBuffer>;
+    const output = (await ffmpeg.readFile(exportFile)) as Uint8Array<ArrayBuffer>;
 
-  const blob = new Blob([output]);
-  return blob;
+    const blob = new Blob([output]);
+    return blob;
+  } finally {
+    await Promise.all([
+      ffmpeg.deleteFile(inputFile).catch(() => undefined),
+      ffmpeg.deleteFile(exportFile).catch(() => undefined),
+    ]);
+  }
 }

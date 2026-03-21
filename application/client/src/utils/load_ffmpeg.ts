@@ -1,6 +1,7 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 
 let ffmpegPromise: Promise<FFmpeg> | null = null;
+let ffmpegTempFileCounter = 0;
 
 export async function loadFFmpeg(): Promise<FFmpeg> {
   if (ffmpegPromise != null) {
@@ -32,4 +33,13 @@ export async function loadFFmpeg(): Promise<FFmpeg> {
   })();
 
   return ffmpegPromise;
+}
+
+export function createFFmpegTempFileName(prefix: string, extension?: string): string {
+  ffmpegTempFileCounter += 1;
+  const suffix = `${Date.now()}-${ffmpegTempFileCounter}`;
+  if (extension == null || extension.length === 0) {
+    return `${prefix}-${suffix}`;
+  }
+  return `${prefix}-${suffix}.${extension}`;
 }

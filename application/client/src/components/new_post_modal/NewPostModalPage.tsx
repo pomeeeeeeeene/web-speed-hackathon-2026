@@ -209,6 +209,7 @@ export const NewPostModalPage = ({ id, hasError, isLoading, onResetError, onSubm
         <AttachFileInputButton
           accept="image/*"
           active={params.images.length !== 0}
+          disabled={isConverting || isLoading}
           icon={<FontAwesomeIcon iconType="images" styleType="solid" />}
           label="画像を添付"
           onChange={handleChangeImages}
@@ -216,6 +217,7 @@ export const NewPostModalPage = ({ id, hasError, isLoading, onResetError, onSubm
         <AttachFileInputButton
           accept="audio/*"
           active={params.sound !== undefined}
+          disabled={isConverting || isLoading}
           icon={<FontAwesomeIcon iconType="music" styleType="solid" />}
           label="音声を添付"
           onChange={handleChangeSound}
@@ -223,6 +225,7 @@ export const NewPostModalPage = ({ id, hasError, isLoading, onResetError, onSubm
         <AttachFileInputButton
           accept="video/*"
           active={params.movie !== undefined}
+          disabled={isConverting || isLoading}
           icon={<FontAwesomeIcon iconType="video" styleType="solid" />}
           label="動画を添付"
           onChange={handleChangeMovie}
