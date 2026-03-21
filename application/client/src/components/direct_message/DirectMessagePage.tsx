@@ -34,6 +34,10 @@ export const DirectMessagePage = ({
   onTyping,
   onSubmit,
 }: Props) => {
+  const messagesViewportRef = useRef<HTMLDivElement>(null);
+  const messagesListRef = useRef<HTMLUListElement>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const formRef = useRef<HTMLFormElement>(null);
   const textAreaId = useId();
 
@@ -43,7 +47,22 @@ export const DirectMessagePage = ({
   const [text, setText] = useState("");
   const textAreaRows = Math.min((text || "").split("\n").length, 5);
   const isInvalid = text.trim().length === 0;
-  const scrollHeightRef = useRef(0);
+
+  const isNearBottom = useCallback(() => {
+    const viewport = messagesViewportRef.current;
+    if (viewport == null) {
+      return true;
+    }
+
+    const remaining = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    return remaining <= 48;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    bottomAnchorRef.current?.scrollIntoView({
+      block: "end",
+    });
+  }, []);
 
   const handleChange = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -73,17 +92,52 @@ export const DirectMessagePage = ({
     [onSubmit, text],
   );
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      const height = Number(window.getComputedStyle(document.body).height.replace("px", ""));
-      if (height !== scrollHeightRef.current) {
-        scrollHeightRef.current = height;
-        window.scrollTo(0, height);
-      }
-    }, 1);
+  const handleMessagesScroll = useCallback(() => {
+    shouldAutoScrollRef.current = isNearBottom();
+  }, [isNearBottom]);
 
-    return () => clearInterval(id);
-  }, []);
+  useEffect(() => {
+    shouldAutoScrollRef.current = true;
+    scrollToBottom();
+  }, [conversation.id, scrollToBottom]);
+
+  useEffect(() => {
+    if (shouldAutoScrollRef.current) {
+      scrollToBottom();
+    }
+  }, [conversation.messages.length, scrollToBottom]);
+
+  useEffect(() => {
+    const viewport = messagesViewportRef.current;
+    const list = messagesListRef.current;
+    if (viewport == null || list == null) {
+      return;
+    }
+
+    const maybeScrollToBottom = () => {
+      if (shouldAutoScrollRef.current) {
+        scrollToBottom();
+      }
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      maybeScrollToBottom();
+    });
+    resizeObserver.observe(viewport);
+
+    const mutationObserver = new MutationObserver(() => {
+      maybeScrollToBottom();
+    });
+    mutationObserver.observe(list, {
+      childList: true,
+      subtree: true,
+    });
+
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [scrollToBottom]);
 
   if (conversationError != null) {
     return (
@@ -111,19 +165,24 @@ export const DirectMessagePage = ({
         </div>
       </header>
 
-      <div className="bg-cax-surface-subtle flex-1 space-y-4 overflow-y-auto px-4 pt-4 pb-8">
+      <div
+        className="bg-cax-surface-subtle flex-1 space-y-4 overflow-y-auto px-4 pt-4 pb-8"
+        onScroll={handleMessagesScroll}
+        ref={messagesViewportRef}
+      >
         {conversation.messages.length === 0 && (
           <p className="text-cax-text-muted text-center text-sm">
             まだメッセージはありません。最初のメッセージを送信してみましょう。
           </p>
         )}
 
-        <ul className="grid gap-3" data-testid="dm-message-list">
+        <ul className="grid gap-3" data-testid="dm-message-list" ref={messagesListRef}>
           {conversation.messages.map((message) => {
             const isActiveUserSend = message.sender.id === activeUser.id;
 
             return (
               <li
+                key={message.id}
                 className={classNames(
                   "flex flex-col w-full",
                   isActiveUserSend ? "items-end" : "items-start",
@@ -151,6 +210,7 @@ export const DirectMessagePage = ({
             );
           })}
         </ul>
+        <div aria-hidden="true" ref={bottomAnchorRef} />
       </div>
 
       <div className="sticky bottom-12 z-10 lg:bottom-0">
