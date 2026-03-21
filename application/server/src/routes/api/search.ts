@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { Op } from "sequelize";
+import { Op, type WhereOptions } from "sequelize";
 
 import { Post } from "@web-speed-hackathon-2026/server/src/models";
 import { resolvePagination } from "@web-speed-hackathon-2026/server/src/utils/pagination";
@@ -21,73 +21,76 @@ searchRouter.get("/search", async (req, res) => {
     return res.status(200).type("application/json").send([]);
   }
 
-  const searchTerm = keywords ? `%${keywords}%` : null;
   const { limit, offset } = resolvePagination(req.query["limit"], req.query["offset"], {
     maxLimit: 50,
   });
-  const fetchUpperBound = limit + offset;
+
+  const whereConditions: WhereOptions[] = [];
 
   // 日付条件を構築
-  const dateConditions: Record<symbol, Date>[] = [];
+  const createdAtCondition: Record<symbol, Date> = {};
+  let hasDateFilter = false;
   if (sinceDate) {
-    dateConditions.push({ [Op.gte]: sinceDate });
+    createdAtCondition[Op.gte] = sinceDate;
+    hasDateFilter = true;
   }
   if (untilDate) {
-    dateConditions.push({ [Op.lte]: untilDate });
+    createdAtCondition[Op.lte] = untilDate;
+    hasDateFilter = true;
   }
-  const dateWhere =
-    dateConditions.length > 0 ? { createdAt: Object.assign({}, ...dateConditions) } : {};
+  if (hasDateFilter) {
+    whereConditions.push({ createdAt: createdAtCondition });
+  }
 
-  // テキスト検索条件
-  const textWhere = searchTerm ? { text: { [Op.like]: searchTerm } } : {};
-
-  const postsByText = await Post.findAll({
-    limit: fetchUpperBound,
-    where: {
-      ...textWhere,
-      ...dateWhere,
-    },
-  });
-
-  // ユーザー名/名前での検索（キーワードがある場合のみ）
-  let postsByUser: typeof postsByText = [];
-  if (searchTerm) {
-    postsByUser = await Post.findAll({
-      include: [
-        {
-          association: "user",
-          attributes: { exclude: ["profileImageId"] },
-          include: [{ association: "profileImage" }],
-          required: true,
-          where: {
-            [Op.or]: [{ username: { [Op.like]: searchTerm } }, { name: { [Op.like]: searchTerm } }],
-          },
-        },
-        {
-          association: "images",
-          through: { attributes: [] },
-        },
-        { association: "movie" },
-        { association: "sound" },
+  if (keywords) {
+    const searchTerm = `%${keywords}%`;
+    whereConditions.push({
+      [Op.or]: [
+        { text: { [Op.like]: searchTerm } },
+        { "$user.username$": { [Op.like]: searchTerm } },
+        { "$user.name$": { [Op.like]: searchTerm } },
       ],
-      limit: fetchUpperBound,
-      where: dateWhere,
     });
   }
 
-  const postIdSet = new Set<string>();
-  const mergedPosts: typeof postsByText = [];
+  const where = whereConditions.length > 0 ? ({ [Op.and]: whereConditions } as WhereOptions) : {};
 
-  for (const post of [...postsByText, ...postsByUser]) {
-    if (!postIdSet.has(post.id)) {
-      postIdSet.add(post.id);
-      mergedPosts.push(post);
-    }
+  const matchedPosts = await Post.unscoped().findAll({
+    attributes: ["id"],
+    include: [
+      {
+        association: "user",
+        attributes: [],
+        required: true,
+      },
+    ],
+    limit,
+    offset,
+    order: [
+      ["createdAt", "DESC"],
+      ["id", "DESC"],
+    ],
+    subQuery: false,
+    where,
+  });
+
+  const postIds = matchedPosts.map((post) => post.id);
+  if (postIds.length === 0) {
+    return res.status(200).type("application/json").send([]);
   }
 
-  mergedPosts.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const posts = await Post.findAll({
+    where: {
+      id: {
+        [Op.in]: postIds,
+      },
+    },
+    order: [
+      ["createdAt", "DESC"],
+      ["id", "DESC"],
+      ["images", "createdAt", "ASC"],
+    ],
+  });
 
-  const result = mergedPosts.slice(offset, offset + limit);
-
-  return res.status(200).type("application/json").send(result);
+  return res.status(200).type("application/json").send(posts);
 });
