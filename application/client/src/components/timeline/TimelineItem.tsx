@@ -28,9 +28,10 @@ const isClickedAnchor = (target: EventTarget | null, currentTarget: Element): bo
  */
 interface Props {
   post: Models.Post;
+  prioritizeFirstImage?: boolean;
 }
 
-export const TimelineItem = ({ post }: Props) => {
+export const TimelineItem = ({ post, prioritizeFirstImage = false }: Props) => {
   const navigate = useNavigate();
 
   /**
@@ -84,7 +85,7 @@ export const TimelineItem = ({ post }: Props) => {
           </div>
           {post.images?.length > 0 ? (
             <div className="relative mt-2 w-full">
-              <ImageArea images={post.images} />
+              <ImageArea images={post.images} prioritizeFirstImage={prioritizeFirstImage} />
             </div>
           ) : null}
           {post.movie ? (
